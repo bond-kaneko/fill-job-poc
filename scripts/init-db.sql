@@ -1,0 +1,3 @@
+CREATE DATABASE river_db;
+CREATE DATABASE sqs_db;
+CREATE DATABASE custom_db;
