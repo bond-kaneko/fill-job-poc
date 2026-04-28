@@ -28,3 +28,14 @@ test-river:
 
 test-sqs:
 	cd sqs-impl && go test ./... -count=1 -timeout 120s
+
+load: load-custom load-river load-sqs
+
+load-custom:
+	cd custom-impl && go test -tags=load ./... -run TestLoadThroughput -v -count=1 -timeout 300s
+
+load-river:
+	cd river-impl && go test -tags=load ./... -run TestLoadThroughput -v -count=1 -timeout 300s
+
+load-sqs:
+	cd sqs-impl && go test -tags=load ./... -run TestLoadThroughput -v -count=1 -timeout 300s

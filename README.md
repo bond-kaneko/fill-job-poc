@@ -91,6 +91,92 @@ tables.
 | dedup | `TestDuplicateEnqueueRunsOnce` | `TestDuplicateEnqueueRunsOnce` | `TestDuplicateEnqueueRunsOnce` |
 | crash / hang recovery | `TestTimeoutRecovery` | `TestVisibilityRecovery` | `TestCrashRecovery` |
 
+## Load test
+
+`loadtest_test.go` in each impl runs under the `load` build tag. The same
+parameters are used across all three implementations so the numbers are
+directly comparable.
+
+```sh
+make load           # all three
+make load-custom
+make load-river
+make load-sqs
+```
+
+| Parameter | Value |
+|---|---|
+| Number of tasks | 500 |
+| Worker concurrency | 8 |
+| Per-task work (`payload.compute_ms`) | 10 ms |
+| Postgres pool (`MaxConns`) | 30 |
+| Visibility timeout (sqs) | 30 s |
+| Lease duration (custom) | 10 s |
+| River `FetchCooldown` / `FetchPollInterval` | 10 ms / 50 ms |
+
+End-to-end is the wall time from enqueueing the first task to seeing all
+500 in `status='completed'`. Latency is `filled_at - created_at` per task,
+aggregated via `percentile_cont` in Postgres. Numbers are from a single run
+on a 2024 MacBook Pro (M3 Max) against `postgres:18` and
+`softwaremill/elasticmq-native:1.6.11` over Docker Desktop.
+
+| Impl | Enqueue rate | End-to-end rate | latency p50 | p95 | p99 | max |
+|---|---:|---:|---:|---:|---:|---:|
+| custom | 768 tasks/sec | 580 tasks/sec | 120 ms | 190 ms | 201 ms | 207 ms |
+| river  | 770 tasks/sec | 379 tasks/sec | 306 ms | 610 ms | 637 ms | 649 ms |
+| sqs    | 508 tasks/sec | 326 tasks/sec | 271 ms | 505 ms | 531 ms | 538 ms |
+
+All three completed 500/500 tasks with zero failures and an empty outbox
+table at the end. River numbers use the tuned `FetchCooldown` /
+`FetchPollInterval` shown above; with River's default values (100 ms and
+1 s) end-to-end throughput drops to roughly 78 tasks/sec on the same
+input.
+
+## Local development with SQS (elasticmq)
+
+`docker-compose.yml` runs `softwaremill/elasticmq-native:1.6.11` so the SQS
+implementation can be exercised locally without an AWS account. Queue
+configuration lives in `scripts/elasticmq.conf` and is mounted as
+`/opt/elasticmq.conf` at startup.
+
+The Go code points the AWS SDK at the local endpoint via
+`sqs.Options.BaseEndpoint`:
+
+```go
+sqs.NewFromConfig(cfg, func(o *sqs.Options) {
+    o.BaseEndpoint = aws.String("http://localhost:9324")
+})
+```
+
+This is the only difference between local and AWS. Everything else (queue
+URL, message format, DLQ behavior) flows through the same `aws-sdk-go-v2`
+calls.
+
+Operations exercised in this PoC against elasticmq:
+
+- `ListQueues`, `GetQueueUrl`
+- `SendMessage`
+- `ReceiveMessage` with `WaitTimeSeconds` (long polling) and
+  `VisibilityTimeout`
+- `DeleteMessage`
+- `MessageSystemAttributeName::ApproximateReceiveCount` for retry
+  bookkeeping
+- DLQ via `deadLettersQueue` redrive policy in `elasticmq.conf`
+
+Not covered by this PoC but supported by elasticmq:
+
+- FIFO queues (`*.fifo` name suffix, `MessageGroupId`,
+  `MessageDeduplicationId`)
+- `ChangeMessageVisibility` for heartbeating long-running jobs
+- `SendMessageBatch` / `DeleteMessageBatch`
+
+Not supported by elasticmq (would require LocalStack or AWS):
+
+- IAM policies and resource-based queue permissions
+- Server-side encryption (SSE / KMS)
+- CloudWatch metrics
+- X-Ray tracing
+
 ## Behavioral notes
 
 - River and Custom achieve exactly-once domain updates by completing the queue
