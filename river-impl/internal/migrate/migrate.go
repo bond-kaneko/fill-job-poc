@@ -12,7 +12,7 @@ import (
 //go:embed 0001_tasks.sql
 var tasksSQL string
 
-// Apply は River の internal table と Miguel domain の tasks を作る。
+// Apply は River の internal table と domain の tasks を作る。
 func Apply(ctx context.Context, pool *pgxpool.Pool) error {
 	migrator, err := rivermigrate.New(riverpgxv5.New(pool), nil)
 	if err != nil {
