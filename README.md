@@ -132,50 +132,17 @@ table at the end. River numbers use the tuned `FetchCooldown` /
 1 s) end-to-end throughput drops to roughly 78 tasks/sec on the same
 input.
 
-## Local development with SQS (elasticmq)
+## Local SQS endpoint
 
-`docker-compose.yml` runs `softwaremill/elasticmq-native:1.6.11` so the SQS
-implementation can be exercised locally without an AWS account. Queue
-configuration lives in `scripts/elasticmq.conf` and is mounted as
-`/opt/elasticmq.conf` at startup.
-
-The Go code points the AWS SDK at the local endpoint via
-`sqs.Options.BaseEndpoint`:
+`softwaremill/elasticmq-native:1.6.11` runs in `docker-compose.yml` and
+serves the SQS protocol on `:9324`. Queue config is in
+`scripts/elasticmq.conf`. The Go side switches via `BaseEndpoint`:
 
 ```go
 sqs.NewFromConfig(cfg, func(o *sqs.Options) {
     o.BaseEndpoint = aws.String("http://localhost:9324")
 })
 ```
-
-This is the only difference between local and AWS. Everything else (queue
-URL, message format, DLQ behavior) flows through the same `aws-sdk-go-v2`
-calls.
-
-Operations exercised in this PoC against elasticmq:
-
-- `ListQueues`, `GetQueueUrl`
-- `SendMessage`
-- `ReceiveMessage` with `WaitTimeSeconds` (long polling) and
-  `VisibilityTimeout`
-- `DeleteMessage`
-- `MessageSystemAttributeName::ApproximateReceiveCount` for retry
-  bookkeeping
-- DLQ via `deadLettersQueue` redrive policy in `elasticmq.conf`
-
-Not covered by this PoC but supported by elasticmq:
-
-- FIFO queues (`*.fifo` name suffix, `MessageGroupId`,
-  `MessageDeduplicationId`)
-- `ChangeMessageVisibility` for heartbeating long-running jobs
-- `SendMessageBatch` / `DeleteMessageBatch`
-
-Not supported by elasticmq (would require LocalStack or AWS):
-
-- IAM policies and resource-based queue permissions
-- Server-side encryption (SSE / KMS)
-- CloudWatch metrics
-- X-Ray tracing
 
 ## Behavioral notes
 
