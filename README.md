@@ -23,7 +23,7 @@ Each implementation covers the following scenarios in `integration_test.go`.
 ```
 fill-job-poc/
   go.work
-  docker-compose.yml            # postgres:18 + softwaremill/elasticmq
+  docker-compose.yml            # postgres:17 + softwaremill/elasticmq
   scripts/                      # init-db.sql, elasticmq.conf
 
   shared/                       # generic Task domain (entity, status, Payload, Process)
@@ -117,7 +117,7 @@ make load-sqs
 End-to-end is the wall time from enqueueing the first task to seeing all
 500 in `status='completed'`. Latency is `filled_at - created_at` per task,
 aggregated via `percentile_cont` in Postgres. Numbers are from a single run
-on a 2024 MacBook Pro (M3 Max) against `postgres:18` and
+on a 2024 MacBook Pro (M3 Max) against `postgres:17` and
 `softwaremill/elasticmq-native:1.6.11` over Docker Desktop.
 
 | Impl | Enqueue rate | End-to-end rate | latency p50 | p95 | p99 | max |
